@@ -1,267 +1,323 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
+<meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Cartoon Rock Paper Scissors Sandbox</title>
+<title>Stormy Rock Paper Scissors Sandbox</title>
 <style>
-    body {
+    html, body {
         margin: 0;
-        background: #f0f0f0;
+        padding: 0;
         overflow: hidden;
-        font-family: sans-serif;
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
+        background: #87ceeb;
+        height: 100%;
     }
     canvas {
-        flex: 1;
         display: block;
-        background: #d9f0ff;
+        touch-action: none;
     }
-    .controls {
+    #controls {
+        position: fixed;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.5);
+        padding: 8px 14px;
+        border-radius: 14px;
         display: flex;
         flex-wrap: wrap;
+        gap: 10px;
         justify-content: center;
-        align-items: center;
-        padding: 5px;
-        background: rgba(0,0,0,0.7);
+    }
+    #controls label {
         color: white;
         font-size: 14px;
     }
-    .controls label, .controls span {
-        margin: 5px;
+    #controls input {
+        max-width: 80px;
     }
-    .controls input, .controls button {
-        margin: 5px;
-        padding: 5px;
-        font-size: 14px;
-        border-radius: 5px;
-        border: none;
-    }
-    .controls button {
-        background: #ff9800;
+    #watermark {
+        position: fixed;
+        bottom: 5px;
+        right: 8px;
         color: white;
-        cursor: pointer;
-    }
-    .controls button:hover {
-        background: #e68a00;
+        font-size: 12px;
+        opacity: 0.7;
+        font-family: monospace;
     }
 </style>
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
-<div class="controls">
-    <label>Speed: <input type="range" id="speedSlider" min="0.5" max="5" value="2" step="0.1"></label>
-    <button id="addRandom">Add Random</button>
-    <button id="addEach">Add One of Each</button>
-    <label>Count: <input type="number" id="countInput" value="5" min="1"></label>
-    <button id="spawnCount">Spawn</button>
-    <button id="pauseResume">Pause</button>
+<div id="controls">
+    <label>Speed <input type="range" id="speed" min="0.5" max="5" step="0.5" value="2"></label>
+    <label>Entities <input type="number" id="count" min="3" max="50" value="12"></label>
     <button id="reset">Reset</button>
-    <span>Rocks: <span id="rockCount">0</span></span>
-    <span>Papers: <span id="paperCount">0</span></span>
-    <span>Scissors: <span id="scissorCount">0</span></span>
 </div>
-
+<div id="watermark">coded by timelord</div>
 <script>
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-let W = window.innerWidth;
-let H = window.innerHeight - document.querySelector('.controls').offsetHeight;
-canvas.width = W;
-canvas.height = H;
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+let width = window.innerWidth;
+let height = window.innerHeight;
+canvas.width = width;
+canvas.height = height;
 
-window.addEventListener('resize', () => {
-    W = window.innerWidth;
-    H = window.innerHeight - document.querySelector('.controls').offsetHeight;
-    canvas.width = W;
-    canvas.height = H;
-});
+const speedSlider = document.getElementById("speed");
+const countInput = document.getElementById("count");
+const resetBtn = document.getElementById("reset");
 
-const speedSlider = document.getElementById('speedSlider');
-let speedMultiplier = parseFloat(speedSlider.value);
-speedSlider.addEventListener('input', () => {
-    speedMultiplier = parseFloat(speedSlider.value);
-});
+const TYPES = ["rock", "paper", "scissors"];
+const COLORS = {
+    rock: "#a0522d",
+    paper: "#fffacd",
+    scissors: "#c0c0c0"
+};
+const PARTICLES = {
+    rock: "#deb887",
+    paper: "#f0e68c",
+    scissors: "#ffd700"
+};
 
-const rockCountEl = document.getElementById('rockCount');
-const paperCountEl = document.getElementById('paperCount');
-const scissorCountEl = document.getElementById('scissorCount');
+let entities = [];
+let speedFactor = parseFloat(speedSlider.value);
+let rainDrops = [];
+let clouds = [];
+let hills = [];
+let lightningFlash = 0;
 
-class Particle {
-    constructor(x, y, color) {
-        this.x = x;
-        this.y = y;
-        this.radius = Math.random() * 3 + 2;
-        this.color = color;
-        this.vx = (Math.random() - 0.5) * 4;
-        this.vy = (Math.random() - 0.5) * 4;
-        this.life = 30;
+function random(min, max) { return Math.random() * (max - min) + min; }
+
+// Create background hills
+function createHills() {
+    hills = [];
+    for (let i = 0; i < 3; i++) {
+        hills.push({
+            y: height - 80 - i * 30,
+            color: `hsl(${120 + i*20}, 40%, ${30+i*10}%)`,
+            speed: 0.2 + i*0.1
+        });
     }
-    update() {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life--;
+}
+
+// Create clouds
+function createClouds() {
+    clouds = [];
+    for (let i = 0; i < 6; i++) {
+        clouds.push({
+            x: random(0, width),
+            y: random(20, height/3),
+            size: random(50, 120),
+            speed: random(0.1, 0.3)
+        });
     }
-    draw() {
-        ctx.beginPath();
-        ctx.fillStyle = this.color;
-        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
-        ctx.fill();
+}
+
+// Create rain
+function createRain() {
+    rainDrops = [];
+    for (let i = 0; i < 200; i++) {
+        rainDrops.push({
+            x: random(0, width),
+            y: random(0, height),
+            length: random(10, 20),
+            speed: random(4, 8)
+        });
     }
 }
 
 class Entity {
-    constructor(type, x, y) {
+    constructor(type) {
         this.type = type;
-        this.x = x;
-        this.y = y;
-        this.size = 40;
-        this.vx = (Math.random() - 0.5) * 3;
-        this.vy = (Math.random() - 0.5) * 3;
-        this.animFrame = 0;
-    }
-    update() {
-        this.x += this.vx * speedMultiplier;
-        this.y += this.vy * speedMultiplier;
-        if (this.x < 0 || this.x > W) this.vx *= -1;
-        if (this.y < 0 || this.y > H) this.vy *= -1;
-        this.animFrame++;
+        this.x = random(50, width-50);
+        this.y = random(50, height-150);
+        this.vx = random(-2, 2);
+        this.vy = random(-2, 2);
+        this.size = 30;
+        this.scale = 1;
     }
     draw() {
         ctx.save();
         ctx.translate(this.x, this.y);
+        ctx.scale(this.scale, this.scale);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = "#000";
-
+        ctx.strokeStyle = "black";
+        ctx.fillStyle = COLORS[this.type];
+        ctx.beginPath();
         if (this.type === "rock") {
-            ctx.fillStyle = "#b0a090";
-            ctx.beginPath();
-            for (let i = 0; i < Math.PI*2; i += Math.PI/6) {
-                let r = this.size/2 + Math.sin(this.animFrame/10 + i*3)*3;
-                ctx.lineTo(Math.cos(i)*r, Math.sin(i)*r);
-            }
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+            ctx.ellipse(0, 0, this.size, this.size*0.8, 0, 0, Math.PI*2);
+        } else if (this.type === "paper") {
+            ctx.rect(-this.size, -this.size*1.2, this.size*2, this.size*2.4);
+        } else if (this.type === "scissors") {
+            ctx.moveTo(-this.size, -this.size);
+            ctx.lineTo(this.size, this.size);
+            ctx.moveTo(this.size, -this.size);
+            ctx.lineTo(-this.size, this.size);
         }
-        if (this.type === "paper") {
-            ctx.fillStyle = "#fff";
-            ctx.beginPath();
-            ctx.rect(-this.size/2, -this.size/1.5, this.size, this.size*1.2);
-            ctx.fill();
-            ctx.stroke();
-            ctx.beginPath(); // Fold corner
-            ctx.moveTo(this.size/2, -this.size/1.5);
-            ctx.lineTo(this.size/2 - 10, -this.size/1.5 + 10);
-            ctx.lineTo(this.size/2, -this.size/1.5 + 20);
-            ctx.fillStyle = "#eee";
-            ctx.fill();
-            ctx.stroke();
-            // Wiggle
-            ctx.translate(Math.sin(this.animFrame/10)*2, 0);
-        }
-        if (this.type === "scissor") {
-            ctx.strokeStyle = "#000";
-            ctx.fillStyle = "#ccc";
-            ctx.beginPath(); // blade 1
-            ctx.moveTo(0, 0);
-            ctx.lineTo(this.size/2, -this.size/2);
-            ctx.stroke();
-            ctx.beginPath(); // blade 2
-            ctx.moveTo(0, 0);
-            ctx.lineTo(this.size/2, this.size/2);
-            ctx.stroke();
-            ctx.fillStyle = "red";
-            ctx.beginPath();
-            ctx.arc(-5, -5, 7, 0, Math.PI*2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(-5, 5, 7, 0, Math.PI*2);
-            ctx.fill();
-        }
-
+        ctx.fill();
+        ctx.stroke();
         ctx.restore();
     }
+    move() {
+        this.x += this.vx * speedFactor;
+        this.y += this.vy * speedFactor;
+        if (this.x < this.size || this.x > width - this.size) this.vx *= -1;
+        if (this.y < this.size || this.y > height - this.size - 50) this.vy *= -1;
+    }
 }
 
-let entities = [];
-let particles = [];
-
-function spawn(type) {
-    entities.push(new Entity(type, Math.random()*W, Math.random()*H));
+function spawnEntities(n) {
+    entities = [];
+    for (let i = 0; i < n; i++) {
+        entities.push(new Entity(TYPES[Math.floor(Math.random()*3)]));
+    }
 }
 
-function updateCounts() {
-    rockCountEl.textContent = entities.filter(e => e.type === "rock").length;
-    paperCountEl.textContent = entities.filter(e => e.type === "paper").length;
-    scissorCountEl.textContent = entities.filter(e => e.type === "scissor").length;
-}
-
-function gameLogic() {
-    for (let i = 0; i < entities.length; i++) {
-        for (let j = i+1; j < entities.length; j++) {
-            const a = entities[i];
-            const b = entities[j];
-            const dx = a.x - b.x;
-            const dy = a.y - b.y;
-            const dist = Math.hypot(dx, dy);
-            if (dist < (a.size/2 + b.size/2)) {
-                let winner, loser;
-                if (a.type === "rock" && b.type === "scissor") { winner = a; loser = b; }
-                else if (a.type === "scissor" && b.type === "paper") { winner = a; loser = b; }
-                else if (a.type === "paper" && b.type === "rock") { winner = a; loser = b; }
-                else if (b.type === "rock" && a.type === "scissor") { winner = b; loser = a; }
-                else if (b.type === "scissor" && a.type === "paper") { winner = b; loser = a; }
-                else if (b.type === "paper" && a.type === "rock") { winner = b; loser = a; }
-                if (winner && loser) {
-                    for (let p = 0; p < 10; p++) {
-                        particles.push(new Particle(loser.x, loser.y, "#ff0"));
-                    }
-                    loser.type = winner.type;
-                }
-            }
+function collide(e1, e2) {
+    let dx = e1.x - e2.x;
+    let dy = e1.y - e2.y;
+    let dist = Math.hypot(dx, dy);
+    if (dist < e1.size + e2.size) {
+        if (beats(e1.type, e2.type)) {
+            e2.type = e1.type;
+            squash(e1);
+        } else if (beats(e2.type, e1.type)) {
+            e1.type = e2.type;
+            squash(e2);
         }
     }
 }
 
-let paused = false;
+function beats(a, b) {
+    return (a === "rock" && b === "scissors") ||
+           (a === "scissors" && b === "paper") ||
+           (a === "paper" && b === "rock");
+}
+
+function squash(entity) {
+    entity.scale = 1.5;
+    setTimeout(() => { entity.scale = 1; }, 150);
+}
+
+function drawBackground() {
+    ctx.fillStyle = "#87ceeb";
+    ctx.fillRect(0, 0, width, height);
+
+    // Hills
+    for (let h of hills) {
+        ctx.fillStyle = h.color;
+        ctx.beginPath();
+        ctx.moveTo(0, h.y);
+        for (let x = 0; x <= width; x += 20) {
+            ctx.lineTo(x, h.y - Math.sin(x/50)*20);
+        }
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Clouds
+    ctx.fillStyle = "#fff";
+    for (let c of clouds) {
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, c.size, c.size/2, 0, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+function drawRain() {
+    ctx.strokeStyle = "rgba(255,255,255,0.7)";
+    ctx.lineWidth = 2;
+    for (let r of rainDrops) {
+        ctx.beginPath();
+        ctx.moveTo(r.x, r.y);
+        ctx.lineTo(r.x + 3, r.y + r.length);
+        ctx.stroke();
+    }
+}
+
+function updateRain() {
+    for (let r of rainDrops) {
+        r.y += r.speed;
+        r.x += 1;
+        if (r.y > height) {
+            r.y = -10;
+            r.x = random(0, width);
+        }
+    }
+}
+
+function updateClouds() {
+    for (let c of clouds) {
+        c.x += c.speed;
+        if (c.x - c.size > width) c.x = -c.size;
+    }
+}
+
+function maybeLightning() {
+    if (Math.random() < 0.005) {
+        lightningFlash = 10;
+    }
+    if (lightningFlash > 0) {
+        ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
+        ctx.fillRect(0, 0, width, height);
+        lightningFlash--;
+    }
+}
 
 function animate() {
-    if (!paused) {
-        ctx.clearRect(0, 0, W, H);
-        entities.forEach(e => { e.update(); e.draw(); });
-        particles.forEach(p => { p.update(); p.draw(); });
-        particles = particles.filter(p => p.life > 0);
-        gameLogic();
-        updateCounts();
+    ctx.clearRect(0, 0, width, height);
+    drawBackground();
+    updateClouds();
+    drawRain();
+    updateRain();
+    maybeLightning();
+
+    for (let i = 0; i < entities.length; i++) {
+        for (let j = i+1; j < entities.length; j++) {
+            collide(entities[i], entities[j]);
+        }
     }
+
+    for (let e of entities) {
+        e.move();
+        e.draw();
+    }
+
     requestAnimationFrame(animate);
 }
 
-document.getElementById('addRandom').onclick = () => {
-    const types = ["rock", "paper", "scissor"];
-    spawn(types[Math.floor(Math.random()*3)]);
-};
-document.getElementById('addEach').onclick = () => {
-    spawn("rock"); spawn("paper"); spawn("scissor");
-};
-document.getElementById('spawnCount').onclick = () => {
-    const count = parseInt(document.getElementById('countInput').value);
-    const types = ["rock", "paper", "scissor"];
-    for (let i = 0; i < count; i++) spawn(types[Math.floor(Math.random()*3)]);
-};
-document.getElementById('pauseResume').onclick = () => {
-    paused = !paused;
-    document.getElementById('pauseResume').textContent = paused ? "Resume" : "Pause";
-};
-document.getElementById('reset').onclick = () => {
-    entities = [];
-    particles = [];
-    updateCounts();
-};
+speedSlider.addEventListener("input", () => {
+    speedFactor = parseFloat(speedSlider.value);
+});
+resetBtn.addEventListener("click", () => {
+    spawnEntities(parseInt(countInput.value));
+});
 
+// Mobile resize handling
+window.addEventListener("resize", () => {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = width;
+    canvas.height = height;
+    createHills();
+    createClouds();
+    createRain();
+});
+
+canvas.addEventListener("touchstart", (e) => {
+    let touch = e.touches[0];
+    entities.push(new Entity(TYPES[Math.floor(Math.random()*3)]));
+    entities[entities.length-1].x = touch.clientX;
+    entities[entities.length-1].y = touch.clientY;
+});
+
+// Init
+createHills();
+createClouds();
+createRain();
+spawnEntities(parseInt(countInput.value));
 animate();
 </script>
 </body>
