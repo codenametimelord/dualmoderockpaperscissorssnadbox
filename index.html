@@ -2,243 +2,267 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Stone Paper Scissors Sandbox</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cartoon Rock Paper Scissors Sandbox</title>
 <style>
-  body {
-    margin: 0;
-    overflow: hidden;
-    background: #f0f0f0;
-    font-family: sans-serif;
-  }
-  #controls {
-    position: fixed;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(255,255,255,0.9);
-    padding: 10px;
-    border-radius: 12px;
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  button, input[type=range] {
-    font-size: 16px;
-  }
+    body {
+        margin: 0;
+        background: #f0f0f0;
+        overflow: hidden;
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+    }
+    canvas {
+        flex: 1;
+        display: block;
+        background: #d9f0ff;
+    }
+    .controls {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        padding: 5px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        font-size: 14px;
+    }
+    .controls label, .controls span {
+        margin: 5px;
+    }
+    .controls input, .controls button {
+        margin: 5px;
+        padding: 5px;
+        font-size: 14px;
+        border-radius: 5px;
+        border: none;
+    }
+    .controls button {
+        background: #ff9800;
+        color: white;
+        cursor: pointer;
+    }
+    .controls button:hover {
+        background: #e68a00;
+    }
 </style>
 </head>
 <body>
-
 <canvas id="gameCanvas"></canvas>
-
-<div id="controls">
-  <button id="addBtn">Add Random</button>
-  <button id="resetBtn">Reset</button>
-  Speed: <input id="speedSlider" type="range" min="0.5" max="5" step="0.1" value="2">
+<div class="controls">
+    <label>Speed: <input type="range" id="speedSlider" min="0.5" max="5" value="2" step="0.1"></label>
+    <button id="addRandom">Add Random</button>
+    <button id="addEach">Add One of Each</button>
+    <label>Count: <input type="number" id="countInput" value="5" min="1"></label>
+    <button id="spawnCount">Spawn</button>
+    <button id="pauseResume">Pause</button>
+    <button id="reset">Reset</button>
+    <span>Rocks: <span id="rockCount">0</span></span>
+    <span>Papers: <span id="paperCount">0</span></span>
+    <span>Scissors: <span id="scissorCount">0</span></span>
 </div>
 
 <script>
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+let W = window.innerWidth;
+let H = window.innerHeight - document.querySelector('.controls').offsetHeight;
+canvas.width = W;
+canvas.height = H;
 
-const TYPES = ["stone", "paper", "scissor"];
-const SPEED_BASE = 2;
-let SPEED_MULT = 2;
+window.addEventListener('resize', () => {
+    W = window.innerWidth;
+    H = window.innerHeight - document.querySelector('.controls').offsetHeight;
+    canvas.width = W;
+    canvas.height = H;
+});
 
-const entities = [];
-const particles = [];
+const speedSlider = document.getElementById('speedSlider');
+let speedMultiplier = parseFloat(speedSlider.value);
+speedSlider.addEventListener('input', () => {
+    speedMultiplier = parseFloat(speedSlider.value);
+});
 
-// Entity Constructor
-function createEntity(type, x, y) {
-  return {
-    type,
-    x,
-    y,
-    vx: (Math.random() - 0.5) * SPEED_BASE * SPEED_MULT,
-    vy: (Math.random() - 0.5) * SPEED_BASE * SPEED_MULT,
-    anim: 0
-  };
-}
+const rockCountEl = document.getElementById('rockCount');
+const paperCountEl = document.getElementById('paperCount');
+const scissorCountEl = document.getElementById('scissorCount');
 
-// Particle Constructor
-function createParticles(x, y, color) {
-  for (let i = 0; i < 15; i++) {
-    particles.push({
-      x, y,
-      vx: (Math.random() - 0.5) * 4,
-      vy: (Math.random() - 0.5) * 4,
-      life: 1,
-      color
-    });
-  }
-}
-
-// Drawing Functions
-function drawStone(e) {
-  ctx.fillStyle = "#888";
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(e.x, e.y, 20 + Math.sin(e.anim) * 3, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-}
-
-function drawPaper(e) {
-  ctx.fillStyle = "#fff";
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 2;
-  const size = 30 + Math.sin(e.anim) * 3;
-  ctx.beginPath();
-  ctx.rect(e.x - size/2, e.y - size/2, size, size * 1.2);
-  ctx.fill();
-  ctx.stroke();
-}
-
-function drawScissor(e) {
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 2;
-
-  // Handle
-  ctx.fillStyle = "red";
-  ctx.beginPath();
-  ctx.arc(e.x - 10, e.y, 8, 0, Math.PI * 2);
-  ctx.arc(e.x + 10, e.y, 8, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
-
-  // Blades
-  ctx.strokeStyle = "#ccc";
-  ctx.beginPath();
-  ctx.moveTo(e.x, e.y);
-  ctx.lineTo(e.x - 15, e.y - 20);
-  ctx.moveTo(e.x, e.y);
-  ctx.lineTo(e.x + 15, e.y - 20);
-  ctx.stroke();
-}
-
-function drawEntity(e) {
-  if (e.type === "stone") drawStone(e);
-  else if (e.type === "paper") drawPaper(e);
-  else drawScissor(e);
-}
-
-function drawParticles() {
-  for (let p of particles) {
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-// Update Functions
-function updatePositions() {
-  for (let e of entities) {
-    e.x += e.vx;
-    e.y += e.vy;
-    e.vx = Math.max(Math.min(e.vx, SPEED_BASE * SPEED_MULT), -SPEED_BASE * SPEED_MULT);
-    e.vy = Math.max(Math.min(e.vy, SPEED_BASE * SPEED_MULT), -SPEED_BASE * SPEED_MULT);
-
-    if (e.x < 20 || e.x > canvas.width - 20) e.vx *= -1;
-    if (e.y < 20 || e.y > canvas.height - 20) e.vy *= -1;
-    if (e.anim > 0) e.anim -= 0.1;
-  }
-}
-
-function updateParticles() {
-  for (let i = particles.length - 1; i >= 0; i--) {
-    let p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life -= 0.02;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-}
-
-function checkCollisions() {
-  for (let i = 0; i < entities.length; i++) {
-    for (let j = i + 1; j < entities.length; j++) {
-      const a = entities[i];
-      const b = entities[j];
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      if (dist < 40) {
-        handleInteraction(a, b);
-      }
+class Particle {
+    constructor(x, y, color) {
+        this.x = x;
+        this.y = y;
+        this.radius = Math.random() * 3 + 2;
+        this.color = color;
+        this.vx = (Math.random() - 0.5) * 4;
+        this.vy = (Math.random() - 0.5) * 4;
+        this.life = 30;
     }
-  }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
+    }
+    draw() {
+        ctx.beginPath();
+        ctx.fillStyle = this.color;
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+        ctx.fill();
+    }
 }
 
-function handleInteraction(a, b) {
-  const winner = getWinner(a.type, b.type);
-  if (!winner) return;
-  
-  if (winner === a.type) {
-    entities.push(createEntity(a.type, a.x + Math.random()*20-10, a.y + Math.random()*20-10));
-    a.anim = 1;
-    createParticles(b.x, b.y, "#ff0");
-  } else {
-    entities.push(createEntity(b.type, b.x + Math.random()*20-10, b.y + Math.random()*20-10));
-    b.anim = 1;
-    createParticles(a.x, a.y, "#ff0");
-  }
+class Entity {
+    constructor(type, x, y) {
+        this.type = type;
+        this.x = x;
+        this.y = y;
+        this.size = 40;
+        this.vx = (Math.random() - 0.5) * 3;
+        this.vy = (Math.random() - 0.5) * 3;
+        this.animFrame = 0;
+    }
+    update() {
+        this.x += this.vx * speedMultiplier;
+        this.y += this.vy * speedMultiplier;
+        if (this.x < 0 || this.x > W) this.vx *= -1;
+        if (this.y < 0 || this.y > H) this.vy *= -1;
+        this.animFrame++;
+    }
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#000";
+
+        if (this.type === "rock") {
+            ctx.fillStyle = "#b0a090";
+            ctx.beginPath();
+            for (let i = 0; i < Math.PI*2; i += Math.PI/6) {
+                let r = this.size/2 + Math.sin(this.animFrame/10 + i*3)*3;
+                ctx.lineTo(Math.cos(i)*r, Math.sin(i)*r);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }
+        if (this.type === "paper") {
+            ctx.fillStyle = "#fff";
+            ctx.beginPath();
+            ctx.rect(-this.size/2, -this.size/1.5, this.size, this.size*1.2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.beginPath(); // Fold corner
+            ctx.moveTo(this.size/2, -this.size/1.5);
+            ctx.lineTo(this.size/2 - 10, -this.size/1.5 + 10);
+            ctx.lineTo(this.size/2, -this.size/1.5 + 20);
+            ctx.fillStyle = "#eee";
+            ctx.fill();
+            ctx.stroke();
+            // Wiggle
+            ctx.translate(Math.sin(this.animFrame/10)*2, 0);
+        }
+        if (this.type === "scissor") {
+            ctx.strokeStyle = "#000";
+            ctx.fillStyle = "#ccc";
+            ctx.beginPath(); // blade 1
+            ctx.moveTo(0, 0);
+            ctx.lineTo(this.size/2, -this.size/2);
+            ctx.stroke();
+            ctx.beginPath(); // blade 2
+            ctx.moveTo(0, 0);
+            ctx.lineTo(this.size/2, this.size/2);
+            ctx.stroke();
+            ctx.fillStyle = "red";
+            ctx.beginPath();
+            ctx.arc(-5, -5, 7, 0, Math.PI*2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(-5, 5, 7, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        ctx.restore();
+    }
 }
 
-function getWinner(t1, t2) {
-  if (t1 === t2) return null;
-  if (t1 === "stone" && t2 === "scissor") return "stone";
-  if (t1 === "scissor" && t2 === "paper") return "scissor";
-  if (t1 === "paper" && t2 === "stone") return "paper";
-  return t2;
+let entities = [];
+let particles = [];
+
+function spawn(type) {
+    entities.push(new Entity(type, Math.random()*W, Math.random()*H));
 }
 
-// Main Game Loop
-function gameLoop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  updatePositions();
-  updateParticles();
-  checkCollisions();
-  for (let e of entities) drawEntity(e);
-  drawParticles();
-  requestAnimationFrame(gameLoop);
+function updateCounts() {
+    rockCountEl.textContent = entities.filter(e => e.type === "rock").length;
+    paperCountEl.textContent = entities.filter(e => e.type === "paper").length;
+    scissorCountEl.textContent = entities.filter(e => e.type === "scissor").length;
 }
 
-// Event Listeners
-document.getElementById("addBtn").addEventListener("click", () => {
-  entities.push(createEntity(randomType(), Math.random()*canvas.width, Math.random()*canvas.height));
-});
-document.getElementById("resetBtn").addEventListener("click", () => {
-  entities.length = 0;
-});
-document.getElementById("speedSlider").addEventListener("input", (e) => {
-  SPEED_MULT = parseFloat(e.target.value);
-});
-
-// Mobile / Click spawn
-canvas.addEventListener("click", (e) => {
-  entities.push(createEntity(randomType(), e.clientX, e.clientY));
-});
-canvas.addEventListener("touchstart", (e) => {
-  const touch = e.touches[0];
-  entities.push(createEntity(randomType(), touch.clientX, touch.clientY));
-});
-
-function randomType() {
-  return TYPES[Math.floor(Math.random() * TYPES.length)];
+function gameLogic() {
+    for (let i = 0; i < entities.length; i++) {
+        for (let j = i+1; j < entities.length; j++) {
+            const a = entities[i];
+            const b = entities[j];
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist < (a.size/2 + b.size/2)) {
+                let winner, loser;
+                if (a.type === "rock" && b.type === "scissor") { winner = a; loser = b; }
+                else if (a.type === "scissor" && b.type === "paper") { winner = a; loser = b; }
+                else if (a.type === "paper" && b.type === "rock") { winner = a; loser = b; }
+                else if (b.type === "rock" && a.type === "scissor") { winner = b; loser = a; }
+                else if (b.type === "scissor" && a.type === "paper") { winner = b; loser = a; }
+                else if (b.type === "paper" && a.type === "rock") { winner = b; loser = a; }
+                if (winner && loser) {
+                    for (let p = 0; p < 10; p++) {
+                        particles.push(new Particle(loser.x, loser.y, "#ff0"));
+                    }
+                    loser.type = winner.type;
+                }
+            }
+        }
+    }
 }
 
-// Init
-for (let i = 0; i < 15; i++) {
-  entities.push(createEntity(randomType(), Math.random()*canvas.width, Math.random()*canvas.height));
+let paused = false;
+
+function animate() {
+    if (!paused) {
+        ctx.clearRect(0, 0, W, H);
+        entities.forEach(e => { e.update(); e.draw(); });
+        particles.forEach(p => { p.update(); p.draw(); });
+        particles = particles.filter(p => p.life > 0);
+        gameLogic();
+        updateCounts();
+    }
+    requestAnimationFrame(animate);
 }
 
-gameLoop();
+document.getElementById('addRandom').onclick = () => {
+    const types = ["rock", "paper", "scissor"];
+    spawn(types[Math.floor(Math.random()*3)]);
+};
+document.getElementById('addEach').onclick = () => {
+    spawn("rock"); spawn("paper"); spawn("scissor");
+};
+document.getElementById('spawnCount').onclick = () => {
+    const count = parseInt(document.getElementById('countInput').value);
+    const types = ["rock", "paper", "scissor"];
+    for (let i = 0; i < count; i++) spawn(types[Math.floor(Math.random()*3)]);
+};
+document.getElementById('pauseResume').onclick = () => {
+    paused = !paused;
+    document.getElementById('pauseResume').textContent = paused ? "Resume" : "Pause";
+};
+document.getElementById('reset').onclick = () => {
+    entities = [];
+    particles = [];
+    updateCounts();
+};
+
+animate();
 </script>
-
 </body>
 </html>
