@@ -1,110 +1,244 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Stone Paper Scissor Sandbox</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #111; }
-        canvas { display: block; }
-    </style>
+<meta charset="UTF-8">
+<title>Stone Paper Scissors Sandbox</title>
+<style>
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+    font-family: sans-serif;
+  }
+  #controls {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.9);
+    padding: 10px;
+    border-radius: 12px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  button, input[type=range] {
+    font-size: 16px;
+  }
+</style>
 </head>
 <body>
+
 <canvas id="gameCanvas"></canvas>
 
+<div id="controls">
+  <button id="addBtn">Add Random</button>
+  <button id="resetBtn">Reset</button>
+  Speed: <input id="speedSlider" type="range" min="0.5" max="5" step="0.1" value="2">
+</div>
+
 <script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 const TYPES = ["stone", "paper", "scissor"];
-const COLORS = { stone: "#888", paper: "#fff", scissor: "#f00" };
-const RADIUS = 20;
-const SPEED = 2;
-const entities = [];
+const SPEED_BASE = 2;
+let SPEED_MULT = 2;
 
-// Create random entities
-for (let i = 0; i < 20; i++) {
-    entities.push({
-        type: TYPES[Math.floor(Math.random() * TYPES.length)],
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * SPEED * 2,
-        vy: (Math.random() - 0.5) * SPEED * 2,
-        anim: 0
+const entities = [];
+const particles = [];
+
+// Entity Constructor
+function createEntity(type, x, y) {
+  return {
+    type,
+    x,
+    y,
+    vx: (Math.random() - 0.5) * SPEED_BASE * SPEED_MULT,
+    vy: (Math.random() - 0.5) * SPEED_BASE * SPEED_MULT,
+    anim: 0
+  };
+}
+
+// Particle Constructor
+function createParticles(x, y, color) {
+  for (let i = 0; i < 15; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      life: 1,
+      color
     });
+  }
+}
+
+// Drawing Functions
+function drawStone(e) {
+  ctx.fillStyle = "#888";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, 20 + Math.sin(e.anim) * 3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawPaper(e) {
+  ctx.fillStyle = "#fff";
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+  const size = 30 + Math.sin(e.anim) * 3;
+  ctx.beginPath();
+  ctx.rect(e.x - size/2, e.y - size/2, size, size * 1.2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawScissor(e) {
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+
+  // Handle
+  ctx.fillStyle = "red";
+  ctx.beginPath();
+  ctx.arc(e.x - 10, e.y, 8, 0, Math.PI * 2);
+  ctx.arc(e.x + 10, e.y, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Blades
+  ctx.strokeStyle = "#ccc";
+  ctx.beginPath();
+  ctx.moveTo(e.x, e.y);
+  ctx.lineTo(e.x - 15, e.y - 20);
+  ctx.moveTo(e.x, e.y);
+  ctx.lineTo(e.x + 15, e.y - 20);
+  ctx.stroke();
 }
 
 function drawEntity(e) {
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, RADIUS + Math.sin(e.anim) * 5, 0, Math.PI * 2);
-    ctx.fillStyle = COLORS[e.type];
-    ctx.fill();
+  if (e.type === "stone") drawStone(e);
+  else if (e.type === "paper") drawPaper(e);
+  else drawScissor(e);
 }
 
+function drawParticles() {
+  for (let p of particles) {
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// Update Functions
 function updatePositions() {
-    for (let e of entities) {
-        e.x += e.vx;
-        e.y += e.vy;
+  for (let e of entities) {
+    e.x += e.vx;
+    e.y += e.vy;
+    e.vx = Math.max(Math.min(e.vx, SPEED_BASE * SPEED_MULT), -SPEED_BASE * SPEED_MULT);
+    e.vy = Math.max(Math.min(e.vy, SPEED_BASE * SPEED_MULT), -SPEED_BASE * SPEED_MULT);
 
-        if (e.x < RADIUS || e.x > canvas.width - RADIUS) e.vx *= -1;
-        if (e.y < RADIUS || e.y > canvas.height - RADIUS) e.vy *= -1;
+    if (e.x < 20 || e.x > canvas.width - 20) e.vx *= -1;
+    if (e.y < 20 || e.y > canvas.height - 20) e.vy *= -1;
+    if (e.anim > 0) e.anim -= 0.1;
+  }
+}
 
-        if (e.anim > 0) e.anim -= 0.1; // decay animation
-    }
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    let p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.02;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
 }
 
 function checkCollisions() {
-    for (let i = 0; i < entities.length; i++) {
-        for (let j = i + 1; j < entities.length; j++) {
-            const a = entities[i];
-            const b = entities[j];
-            const dx = a.x - b.x;
-            const dy = a.y - b.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-
-            if (dist < RADIUS * 2) {
-                handleInteraction(a, b);
-                // Push them apart
-                const angle = Math.atan2(dy, dx);
-                a.x += Math.cos(angle);
-                a.y += Math.sin(angle);
-                b.x -= Math.cos(angle);
-                b.y -= Math.sin(angle);
-            }
-        }
+  for (let i = 0; i < entities.length; i++) {
+    for (let j = i + 1; j < entities.length; j++) {
+      const a = entities[i];
+      const b = entities[j];
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 40) {
+        handleInteraction(a, b);
+      }
     }
+  }
 }
 
 function handleInteraction(a, b) {
-    const winner = getWinner(a.type, b.type);
-    if (!winner) return; // tie
-
-    if (winner === a.type) {
-        b.type = a.type;
-        a.anim = 1; // animate winner
-    } else {
-        a.type = b.type;
-        b.anim = 1; // animate winner
-    }
+  const winner = getWinner(a.type, b.type);
+  if (!winner) return;
+  
+  if (winner === a.type) {
+    entities.push(createEntity(a.type, a.x + Math.random()*20-10, a.y + Math.random()*20-10));
+    a.anim = 1;
+    createParticles(b.x, b.y, "#ff0");
+  } else {
+    entities.push(createEntity(b.type, b.x + Math.random()*20-10, b.y + Math.random()*20-10));
+    b.anim = 1;
+    createParticles(a.x, a.y, "#ff0");
+  }
 }
 
 function getWinner(t1, t2) {
-    if (t1 === t2) return null;
-    if (t1 === "stone" && t2 === "scissor") return "stone";
-    if (t1 === "scissor" && t2 === "paper") return "scissor";
-    if (t1 === "paper" && t2 === "stone") return "paper";
-    return t2; // otherwise t2 wins
+  if (t1 === t2) return null;
+  if (t1 === "stone" && t2 === "scissor") return "stone";
+  if (t1 === "scissor" && t2 === "paper") return "scissor";
+  if (t1 === "paper" && t2 === "stone") return "paper";
+  return t2;
 }
 
+// Main Game Loop
 function gameLoop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    updatePositions();
-    checkCollisions();
-    for (let e of entities) drawEntity(e);
-    requestAnimationFrame(gameLoop);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  updatePositions();
+  updateParticles();
+  checkCollisions();
+  for (let e of entities) drawEntity(e);
+  drawParticles();
+  requestAnimationFrame(gameLoop);
+}
+
+// Event Listeners
+document.getElementById("addBtn").addEventListener("click", () => {
+  entities.push(createEntity(randomType(), Math.random()*canvas.width, Math.random()*canvas.height));
+});
+document.getElementById("resetBtn").addEventListener("click", () => {
+  entities.length = 0;
+});
+document.getElementById("speedSlider").addEventListener("input", (e) => {
+  SPEED_MULT = parseFloat(e.target.value);
+});
+
+// Mobile / Click spawn
+canvas.addEventListener("click", (e) => {
+  entities.push(createEntity(randomType(), e.clientX, e.clientY));
+});
+canvas.addEventListener("touchstart", (e) => {
+  const touch = e.touches[0];
+  entities.push(createEntity(randomType(), touch.clientX, touch.clientY));
+});
+
+function randomType() {
+  return TYPES[Math.floor(Math.random() * TYPES.length)];
+}
+
+// Init
+for (let i = 0; i < 15; i++) {
+  entities.push(createEntity(randomType(), Math.random()*canvas.width, Math.random()*canvas.height));
 }
 
 gameLoop();
 </script>
+
 </body>
 </html>
