@@ -1,324 +1,585 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stormy Rock Paper Scissors Sandbox</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Galaxy RPS Sandbox — coded by timelord</title>
 <style>
-    html, body {
-        margin: 0;
-        padding: 0;
-        overflow: hidden;
-        background: #87ceeb;
-        height: 100%;
-    }
-    canvas {
-        display: block;
-        touch-action: none;
-    }
-    #controls {
-        position: fixed;
-        bottom: 10px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(0,0,0,0.5);
-        padding: 8px 14px;
-        border-radius: 14px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        justify-content: center;
-    }
-    #controls label {
-        color: white;
-        font-size: 14px;
-    }
-    #controls input {
-        max-width: 80px;
-    }
-    #watermark {
-        position: fixed;
-        bottom: 5px;
-        right: 8px;
-        color: white;
-        font-size: 12px;
-        opacity: 0.7;
-        font-family: monospace;
-    }
+  :root{
+    --ui-bg: rgba(0,0,0,0.6);
+    --ui-btn: #ff9f1c;
+    --ui-btn-hover: #ff8a00;
+    --text: #ffffff;
+    --control-gap: 8px;
+  }
+  html,body{height:100%;margin:0;background:#000;overflow:hidden;font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+  canvas{display:block;touch-action:none}
+  /* bottom centered control bar */
+  .controls{
+    position:fixed;
+    left:50%;
+    bottom:10px;
+    transform:translateX(-50%);
+    background:var(--ui-bg);
+    padding:10px;
+    border-radius:14px;
+    display:flex;
+    gap:var(--control-gap);
+    align-items:center;
+    flex-wrap:wrap;
+    justify-content:center;
+    max-width:95%;
+    z-index:30;
+  }
+  .controls label{color:var(--text);font-size:14px;margin:0 4px}
+  .controls input[type=range]{height:30px}
+  .controls button{
+    background:var(--ui-btn);
+    color:var(--text);
+    border:none;
+    padding:8px 10px;
+    border-radius:8px;
+    font-size:14px;
+    cursor:pointer;
+  }
+  .controls button:active{transform:translateY(1px)}
+  .controls button:hover{background:var(--ui-btn-hover)}
+  .counter{color:var(--text);font-size:14px;margin-left:6px}
+  #watermark{position:fixed;right:8px;bottom:6px;color:rgba(255,255,255,0.8);font-size:12px;font-family:monospace;pointer-events:none;z-index:50}
+  @media (max-width:520px){
+    .controls{padding:10px;font-size:13px;border-radius:12px}
+    .controls button{padding:8px}
+  }
 </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
-<div id="controls">
-    <label>Speed <input type="range" id="speed" min="0.5" max="5" step="0.5" value="2"></label>
-    <label>Entities <input type="number" id="count" min="3" max="50" value="12"></label>
-    <button id="reset">Reset</button>
+<canvas id="c"></canvas>
+
+<div class="controls" id="controls">
+  <label>Speed <input id="speed" type="range" min="0.5" max="4" step="0.1" value="1.8"></label>
+  <button id="addRand">Add Random</button>
+  <button id="addEach">Add 1 of Each</button>
+  <label style="display:flex;align-items:center">Spawn <input id="spawnNum" type="number" min="1" max="40" value="5" style="width:64px;margin-left:6px"></label>
+  <button id="spawnBtn">Spawn</button>
+  <button id="pauseBtn">Pause</button>
+  <button id="resetBtn">Reset</button>
+  <div class="counter">R: <span id="rc">0</span></div>
+  <div class="counter">P: <span id="pc">0</span></div>
+  <div class="counter">S: <span id="sc">0</span></div>
 </div>
+
 <div id="watermark">coded by timelord</div>
+
 <script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-let width = window.innerWidth;
-let height = window.innerHeight;
-canvas.width = width;
-canvas.height = height;
+/* ------------------------------
+   Galaxy RPS Sandbox (single file)
+   - colorful nebula + starfield
+   - hand-drawn rock/paper/scissors
+   - squash & stretch on collisions
+   - entity-specific particles
+   - mobile optimized (touch + responsive)
+   ------------------------------ */
 
-const speedSlider = document.getElementById("speed");
-const countInput = document.getElementById("count");
-const resetBtn = document.getElementById("reset");
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d', { alpha: false });
+let DPR = Math.max(1, window.devicePixelRatio || 1);
 
-const TYPES = ["rock", "paper", "scissors"];
-const COLORS = {
-    rock: "#a0522d",
-    paper: "#fffacd",
-    scissors: "#c0c0c0"
-};
-const PARTICLES = {
-    rock: "#deb887",
-    paper: "#f0e68c",
-    scissors: "#ffd700"
-};
+let W = 0, H = 0;
+function resizeCanvas(){
+  DPR = Math.max(1, window.devicePixelRatio || 1);
+  const controlsH = document.getElementById('controls').offsetHeight + 18;
+  W = window.innerWidth;
+  H = Math.max(200, window.innerHeight - controlsH);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  canvas.width = Math.floor(W * DPR);
+  canvas.height = Math.floor(H * DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+window.addEventListener('resize', debounce(resizeCanvas, 120));
+resizeCanvas();
 
+/* ---------- UI ---------- */
+const speedInput = document.getElementById('speed');
+const addRandBtn = document.getElementById('addRand');
+const addEachBtn = document.getElementById('addEach');
+const spawnNumInput = document.getElementById('spawnNum');
+const spawnBtn = document.getElementById('spawnBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const resetBtn = document.getElementById('resetBtn');
+const rcEl = document.getElementById('rc');
+const pcEl = document.getElementById('pc');
+const scEl = document.getElementById('sc');
+
+let speed = parseFloat(speedInput.value);
+speedInput.addEventListener('input', ()=> speed = parseFloat(speedInput.value));
+
+/* ---------- Globals ---------- */
+const TYPES = ['rock','paper','scissor'];
 let entities = [];
-let speedFactor = parseFloat(speedSlider.value);
-let rainDrops = [];
-let clouds = [];
-let hills = [];
-let lightningFlash = 0;
+let particles = [];
+let stars = [];
+let nebulas = [];
+let lastTime = 0;
+let paused = false;
 
-function random(min, max) { return Math.random() * (max - min) + min; }
+/* ---------- Helpers ---------- */
+function rand(min,max){ return Math.random()*(max-min)+min; }
+function choice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function debounce(fn, t){ let id; return ()=>{ clearTimeout(id); id=setTimeout(fn,t); }; }
 
-// Create background hills
-function createHills() {
-    hills = [];
-    for (let i = 0; i < 3; i++) {
-        hills.push({
-            y: height - 80 - i * 30,
-            color: `hsl(${120 + i*20}, 40%, ${30+i*10}%)`,
-            speed: 0.2 + i*0.1
-        });
+/* ---------- Starfield + Nebula ---------- */
+function initStarfield(){
+  stars = [];
+  const density = Math.floor((W*H)/50000); // scale
+  for(let i=0;i<Math.max(80, density);i++){
+    stars.push({
+      x: rand(0,W),
+      y: rand(0,H),
+      r: rand(0.3,1.6),
+      tw: rand(0.01,0.06),
+      phase: rand(0,Math.PI*2),
+      layer: Math.random()<0.6?1:2
+    });
+  }
+  // nebula blobs: soft radial gradients moving slowly
+  nebulas = [];
+  for(let i=0;i<4;i++){
+    nebulas.push({
+      x: rand(-W*0.3, W*1.3),
+      y: rand(-H*0.2, H*0.8),
+      r: rand(120, 400),
+      hue: rand(250, 310), // purple/blue/pink mix
+      sat: rand(40,70),
+      light: rand(40,70),
+      vx: rand(-0.05,0.05),
+      vy: rand(-0.02,0.02),
+      alpha: rand(0.08,0.22)
+    });
+  }
+}
+initStarfield();
+
+/* ---------- Particles ---------- */
+class Particle {
+  constructor(x,y,kind){
+    this.x = x; this.y = y;
+    this.vx = rand(-1.6,1.6);
+    this.vy = rand(-2.2,0.6);
+    this.life = rand(24,44);
+    this.age = 0;
+    this.kind = kind; // 'rock','paper','scissor'
+    this.size = rand(2,6);
+    this.angle = rand(0,Math.PI*2);
+  }
+  update(){
+    this.age++;
+    this.x += this.vx * (1 + 0.2*(this.age/this.life));
+    this.y += this.vy + 0.6*(this.age/this.life);
+    this.angle += 0.1;
+    return this.age >= this.life;
+  }
+  draw(){
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - this.age/this.life);
+    if(this.kind==='rock'){
+      // dust: soft brown circle
+      ctx.fillStyle = 'rgba(150,120,90,' + (0.9*(1-this.age/this.life)) + ')';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI*2);
+      ctx.fill();
+    } else if(this.kind==='paper'){
+      // confetti rectangle
+      ctx.translate(this.x,this.y);
+      ctx.rotate(this.angle);
+      ctx.fillStyle = `rgba(255,255,255,${0.9*(1-this.age/this.life)})`;
+      ctx.fillRect(-this.size, -this.size/1.6, this.size*1.6, this.size*0.9);
+    } else {
+      // scissor sparks
+      ctx.fillStyle = `rgba(255,200,60,${0.9*(1-this.age/this.life)})`;
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y);
+      ctx.lineTo(this.x + Math.cos(this.angle)*this.size*2, this.y + Math.sin(this.angle)*this.size*2);
+      ctx.lineTo(this.x + Math.cos(this.angle+0.9)*this.size, this.y + Math.sin(this.angle+0.9)*this.size);
+      ctx.closePath();
+      ctx.fill();
     }
+    ctx.restore();
+  }
 }
 
-// Create clouds
-function createClouds() {
-    clouds = [];
-    for (let i = 0; i < 6; i++) {
-        clouds.push({
-            x: random(0, width),
-            y: random(20, height/3),
-            size: random(50, 120),
-            speed: random(0.1, 0.3)
-        });
-    }
-}
-
-// Create rain
-function createRain() {
-    rainDrops = [];
-    for (let i = 0; i < 200; i++) {
-        rainDrops.push({
-            x: random(0, width),
-            y: random(0, height),
-            length: random(10, 20),
-            speed: random(4, 8)
-        });
-    }
-}
-
+/* ---------- Entity (RPS) ---------- */
 class Entity {
-    constructor(type) {
-        this.type = type;
-        this.x = random(50, width-50);
-        this.y = random(50, height-150);
-        this.vx = random(-2, 2);
-        this.vy = random(-2, 2);
-        this.size = 30;
-        this.scale = 1;
+  constructor(type,x,y){
+    this.type = type;
+    this.x = x ?? rand(60, W-60);
+    this.y = y ?? rand(60, H-60);
+    this.vx = rand(-1.2,1.2);
+    this.vy = rand(-1.2,1.2);
+    this.size = rand(26,36);
+    this.squash = 0; // squash/stretch amount
+    this.frame = rand(0,1000);
+    this.id = Math.random().toString(36).slice(2,9);
+  }
+  update(){
+    this.frame += 1;
+    // gentle wandering with occasional jitter
+    this.x += this.vx * speed * (0.6 + 0.8*Math.sin(this.frame*0.01));
+    this.y += this.vy * speed * (0.6 + 0.6*Math.cos(this.frame*0.008));
+    // screen wrap-ish bounce
+    if(this.x < 12) { this.x = 12; this.vx = Math.abs(this.vx); }
+    if(this.x > W-12) { this.x = W-12; this.vx = -Math.abs(this.vx); }
+    if(this.y < 12) { this.y = 12; this.vy = Math.abs(this.vy); }
+    if(this.y > H-12) { this.y = H-12; this.vy = -Math.abs(this.vy); }
+
+    // decay squash
+    if(this.squash > 0){
+      this.squash *= 0.88;
+      if(this.squash < 0.02) this.squash = 0;
     }
-    draw() {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.scale(this.scale, this.scale);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "black";
-        ctx.fillStyle = COLORS[this.type];
-        ctx.beginPath();
-        if (this.type === "rock") {
-            ctx.ellipse(0, 0, this.size, this.size*0.8, 0, 0, Math.PI*2);
-        } else if (this.type === "paper") {
-            ctx.rect(-this.size, -this.size*1.2, this.size*2, this.size*2.4);
-        } else if (this.type === "scissors") {
-            ctx.moveTo(-this.size, -this.size);
-            ctx.lineTo(this.size, this.size);
-            ctx.moveTo(this.size, -this.size);
-            ctx.lineTo(-this.size, this.size);
+  }
+  draw(){
+    ctx.save();
+    ctx.translate(this.x, this.y);
+
+    // apply squash/stretch: scaleX reduced, scaleY increased to simulate cartoon juice
+    const sX = 1 - 0.25 * this.squash;
+    const sY = 1 + 0.4 * this.squash;
+    ctx.scale(sX, sY);
+
+    // draw different hand-drawn style per type
+    if(this.type === 'rock'){
+      drawCartoonRock(ctx, this.size, this.frame);
+    } else if(this.type === 'paper'){
+      drawCartoonPaper(ctx, this.size, this.frame);
+    } else {
+      drawCartoonScissor(ctx, this.size, this.frame);
+    }
+
+    ctx.restore();
+  }
+  triggerSquash(){
+    this.squash = 1.0; // will decay
+    // spawn particles
+    for(let i=0;i<16;i++) particles.push(new Particle(this.x + rand(-6,6), this.y + rand(-6,6), this.type));
+  }
+}
+
+/* ---------- Hand-drawn drawings ---------- */
+function drawCartoonRock(ctx, size, frame){
+  // two-tone bumpy rock with outline
+  ctx.beginPath();
+  const r = size * 0.9;
+  for(let i=0;i<8;i++){
+    const ang = (Math.PI*2/8)*i;
+    const rad = r + Math.sin(frame*0.03 + i)*4;
+    const px = Math.cos(ang)*rad;
+    const py = Math.sin(ang)*rad*0.85;
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#a09a93';
+  ctx.fill();
+  ctx.strokeStyle = '#2b2b2b';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // shading blotches
+  ctx.fillStyle = 'rgba(80,70,70,0.12)';
+  ctx.beginPath();
+  ctx.ellipse(-size*0.15, -size*0.05, size*0.35, size*0.2, -0.3, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function drawCartoonPaper(ctx, size, frame){
+  // sheet with folded corner and subtle wave (flap)
+  const w = size*1.4, h = size*1.9;
+  ctx.save();
+  const flap = Math.sin(frame*0.08)*2.6;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#111';
+  ctx.lineWidth = 2;
+
+  // main rect (slightly wavy)
+  ctx.beginPath();
+  ctx.moveTo(-w/2, -h/2);
+  ctx.lineTo(w/2, -h/2 + flap);
+  ctx.lineTo(w/2, h/2);
+  ctx.lineTo(-w/2, h/2);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  // folded corner (top-right)
+  ctx.beginPath();
+  ctx.moveTo(w/4, -h/2);
+  ctx.lineTo(w/2, -h/2);
+  ctx.lineTo(w/2, -h/2 + h*0.18);
+  ctx.closePath();
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fill(); ctx.stroke();
+
+  // light lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 1;
+  for(let i=-2;i<3;i++){
+    ctx.beginPath();
+    ctx.moveTo(-w/2 + i*6, -h/2 + 8 + Math.sin((frame*0.06 + i)*0.7)*2);
+    ctx.lineTo(w/2 - 10, -h/2 + 8 + Math.sin((frame*0.06 + i)*0.7)*2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawCartoonScissor(ctx, size, frame){
+  // two blades and handles; blades "snip" animation with small rotation
+  const t = Math.sin(frame*0.12) * 0.35; // snip angle
+  ctx.save();
+  // center pivot
+  ctx.translate(0,0);
+  // left blade
+  ctx.save();
+  ctx.rotate(-0.2 - t*0.6);
+  ctx.strokeStyle = '#cfcfcf';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.lineTo(size*1.1, -size*1.2);
+  ctx.stroke();
+  ctx.restore();
+
+  // right blade
+  ctx.save();
+  ctx.rotate(0.2 + t*0.6);
+  ctx.strokeStyle = '#dcdcdc';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.lineTo(size*1.1, size*1.2);
+  ctx.stroke();
+  ctx.restore();
+
+  // handles (red)
+  ctx.fillStyle = '#e84a4a';
+  ctx.beginPath();
+  ctx.arc(-size*0.45, -size*0.25, size*0.28, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(-size*0.45, size*0.25, size*0.28, 0, Math.PI*2);
+  ctx.fill();
+
+  // pivot dot
+  ctx.fillStyle = '#2b2b2b';
+  ctx.beginPath();
+  ctx.arc(0,0,3,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/* ---------- Collisions & Logic ---------- */
+function willCollide(a,b){
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.hypot(dx,dy) < (a.size*0.9 + b.size*0.9);
+}
+function beats(a,b){
+  return (a==='rock' && b==='scissor') || (a==='scissor' && b==='paper') || (a==='paper' && b==='rock');
+}
+
+/* ---------- Spawn helpers ---------- */
+function spawn(type=null, x=null, y=null){
+  const t = type ?? choice(TYPES);
+  const e = new Entity(t, x, y);
+  // choose slightly stronger initial speeds for dynamism on mobile
+  e.vx = rand(-1.4,1.4);
+  e.vy = rand(-1.4,1.4);
+  entities.push(e);
+  return e;
+}
+
+/* ---------- Ticking/Rendering ---------- */
+function step(ts){
+  if(!lastTime) lastTime = ts;
+  const dt = Math.min(48, ts - lastTime);
+  lastTime = ts;
+
+  // update positions & background movement
+  for(let n of nebulas){
+    n.x += n.vx * (dt/16);
+    n.y += n.vy * (dt/16);
+    // wrap
+    if(n.x < -W*0.6) n.x = W*1.2;
+    if(n.x > W*1.2) n.x = -W*0.6;
+    if(n.y < -H*0.6) n.y = H*1.2;
+    if(n.y > H*1.2) n.y = -H*0.6;
+  }
+
+  // update stars twinkle slightly
+  for(let s of stars){
+    s.phase += s.tw * (dt/16);
+  }
+
+  if(!paused){
+    // update entities
+    for(let e of entities) e.update();
+    // collisions
+    for(let i=0;i<entities.length;i++){
+      for(let j=i+1;j<entities.length;j++){
+        const a = entities[i], b = entities[j];
+        if(willCollide(a,b)){
+          // simple collision separation
+          const dx = a.x - b.x, dy = a.y - b.y;
+          const dist = Math.max(0.1, Math.hypot(dx,dy));
+          const overlap = (a.size*0.9 + b.size*0.9) - dist;
+          const nx = dx/dist, ny = dy/dist;
+          a.x += nx * (overlap*0.5);
+          a.y += ny * (overlap*0.5);
+          b.x -= nx * (overlap*0.5);
+          b.y -= ny * (overlap*0.5);
+
+          // determine winner
+          if(a.type !== b.type){
+            if(beats(a.type, b.type)){
+              b.type = a.type; a.triggerSquash();
+            } else if(beats(b.type, a.type)){
+              a.type = b.type; b.triggerSquash();
+            }
+            // spawn particles (in triggerSquash)
+          } else {
+            // same type: bounce velocities
+            const tmpVx = a.vx; a.vx = b.vx; b.vx = tmpVx;
+            const tmpVy = a.vy; a.vy = b.vy; b.vy = tmpVy;
+          }
         }
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
+      }
     }
-    move() {
-        this.x += this.vx * speedFactor;
-        this.y += this.vy * speedFactor;
-        if (this.x < this.size || this.x > width - this.size) this.vx *= -1;
-        if (this.y < this.size || this.y > height - this.size - 50) this.vy *= -1;
+
+    // update particles
+    for(let i = particles.length-1; i>=0; i--){
+      const p = particles[i];
+      if(p.update()) particles.splice(i,1);
     }
+  }
+
+  draw();
+  window.requestAnimationFrame(step);
 }
 
-function spawnEntities(n) {
-    entities = [];
-    for (let i = 0; i < n; i++) {
-        entities.push(new Entity(TYPES[Math.floor(Math.random()*3)]));
-    }
+/* ---------- Draw ---------- */
+function draw(){
+  // background: dark base + nebula soft glows + stars
+  // draw black/dark gradient
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#050014');
+  g.addColorStop(1,'#000010');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
+
+  // nebulas (soft radial gradients)
+  for(let n of nebulas){
+    const rg = ctx.createRadialGradient(n.x, n.y, n.r*0.05, n.x, n.y, n.r);
+    rg.addColorStop(0, `hsla(${n.hue}, ${n.sat}%, ${n.light}%, ${n.alpha})`);
+    rg.addColorStop(0.45, `hsla(${n.hue+20}, ${n.sat-10}%, ${Math.min(80,n.light+10)}%, ${n.alpha*0.6})`);
+    rg.addColorStop(1, `rgba(0,0,0,0)`);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // stars (layers)
+  for(let s of stars){
+    const tw = 0.6 + 0.4*Math.sin(s.phase);
+    ctx.fillStyle = s.layer===1? `rgba(255,255,255,${0.7*tw})` : `rgba(200,220,255,${0.35*tw})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r * (s.layer===1?1:0.7), 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // faint galaxy swirl lines (subtle)
+  ctx.globalAlpha = 0.06;
+  ctx.strokeStyle = '#9cc0ff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(W*0.45, H*0.3, W*0.6, H*0.25, 0.2, 0, Math.PI*2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // draw entities and particles
+  for(let e of entities) e.draw();
+  for(let p of particles) p.draw();
+
+  // top-right small HUD if needed (not blocking)
+  // nothing more to draw
 }
 
-function collide(e1, e2) {
-    let dx = e1.x - e2.x;
-    let dy = e1.y - e2.y;
-    let dist = Math.hypot(dx, dy);
-    if (dist < e1.size + e2.size) {
-        if (beats(e1.type, e2.type)) {
-            e2.type = e1.type;
-            squash(e1);
-        } else if (beats(e2.type, e1.type)) {
-            e1.type = e2.type;
-            squash(e2);
-        }
-    }
-}
-
-function beats(a, b) {
-    return (a === "rock" && b === "scissors") ||
-           (a === "scissors" && b === "paper") ||
-           (a === "paper" && b === "rock");
-}
-
-function squash(entity) {
-    entity.scale = 1.5;
-    setTimeout(() => { entity.scale = 1; }, 150);
-}
-
-function drawBackground() {
-    ctx.fillStyle = "#87ceeb";
-    ctx.fillRect(0, 0, width, height);
-
-    // Hills
-    for (let h of hills) {
-        ctx.fillStyle = h.color;
-        ctx.beginPath();
-        ctx.moveTo(0, h.y);
-        for (let x = 0; x <= width; x += 20) {
-            ctx.lineTo(x, h.y - Math.sin(x/50)*20);
-        }
-        ctx.lineTo(width, height);
-        ctx.lineTo(0, height);
-        ctx.closePath();
-        ctx.fill();
-    }
-
-    // Clouds
-    ctx.fillStyle = "#fff";
-    for (let c of clouds) {
-        ctx.beginPath();
-        ctx.ellipse(c.x, c.y, c.size, c.size/2, 0, 0, Math.PI*2);
-        ctx.fill();
-    }
-}
-
-function drawRain() {
-    ctx.strokeStyle = "rgba(255,255,255,0.7)";
-    ctx.lineWidth = 2;
-    for (let r of rainDrops) {
-        ctx.beginPath();
-        ctx.moveTo(r.x, r.y);
-        ctx.lineTo(r.x + 3, r.y + r.length);
-        ctx.stroke();
-    }
-}
-
-function updateRain() {
-    for (let r of rainDrops) {
-        r.y += r.speed;
-        r.x += 1;
-        if (r.y > height) {
-            r.y = -10;
-            r.x = random(0, width);
-        }
-    }
-}
-
-function updateClouds() {
-    for (let c of clouds) {
-        c.x += c.speed;
-        if (c.x - c.size > width) c.x = -c.size;
-    }
-}
-
-function maybeLightning() {
-    if (Math.random() < 0.005) {
-        lightningFlash = 10;
-    }
-    if (lightningFlash > 0) {
-        ctx.fillStyle = "rgba(255, 255, 0, 0.3)";
-        ctx.fillRect(0, 0, width, height);
-        lightningFlash--;
-    }
-}
-
-function animate() {
-    ctx.clearRect(0, 0, width, height);
-    drawBackground();
-    updateClouds();
-    drawRain();
-    updateRain();
-    maybeLightning();
-
-    for (let i = 0; i < entities.length; i++) {
-        for (let j = i+1; j < entities.length; j++) {
-            collide(entities[i], entities[j]);
-        }
-    }
-
-    for (let e of entities) {
-        e.move();
-        e.draw();
-    }
-
-    requestAnimationFrame(animate);
-}
-
-speedSlider.addEventListener("input", () => {
-    speedFactor = parseFloat(speedSlider.value);
+/* ---------- Interactions: touch/click spawn ---------- */
+canvas.addEventListener('pointerdown', (ev)=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = (ev.clientX - rect.left);
+  const y = (ev.clientY - rect.top);
+  spawn(choice(TYPES), x, y);
 });
-resetBtn.addEventListener("click", () => {
-    spawnEntities(parseInt(countInput.value));
+
+addRandBtn.addEventListener('click', ()=> spawn());
+addEachBtn.addEventListener('click', ()=> { spawn('rock'); spawn('paper'); spawn('scissor'); });
+spawnBtn.addEventListener('click', ()=>{
+  const num = Math.max(1, Math.min(40, parseInt(spawnNumInput.value)||5));
+  for(let i=0;i<num;i++) spawn();
 });
 
-// Mobile resize handling
-window.addEventListener("resize", () => {
-    width = window.innerWidth;
-    height = window.innerHeight;
-    canvas.width = width;
-    canvas.height = height;
-    createHills();
-    createClouds();
-    createRain();
+pauseBtn.addEventListener('click', ()=>{
+  paused = !paused;
+  pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+});
+resetBtn.addEventListener('click', ()=>{
+  entities = [];
+  particles = [];
+  initEntities(DEFAULT_ENTITIES);
 });
 
-canvas.addEventListener("touchstart", (e) => {
-    let touch = e.touches[0];
-    entities.push(new Entity(TYPES[Math.floor(Math.random()*3)]));
-    entities[entities.length-1].x = touch.clientX;
-    entities[entities.length-1].y = touch.clientY;
-});
+/* ---------- Initial population & helpers ---------- */
+const DEFAULT_ENTITIES = 12;
+function initEntities(n){
+  entities = [];
+  for(let i=0;i<n;i++) spawn();
+  updateCounters();
+}
+function updateCounters(){
+  const r = entities.filter(e=>e.type==='rock').length;
+  const p = entities.filter(e=>e.type==='paper').length;
+  const s = entities.filter(e=>e.type==='scissor').length;
+  rcEl.textContent = r; pcEl.textContent = p; scEl.textContent = s;
+}
 
-// Init
-createHills();
-createClouds();
-createRain();
-spawnEntities(parseInt(countInput.value));
-animate();
+/* ---------- small loop to update counters periodically ---------- */
+setInterval(updateCounters, 500);
+
+/* ---------- Resize/setup nebulas and stars on load ---------- */
+function initAll(){
+  // create nebulas and stars relative to current size
+  initStarfield();
+  // tweak nebula colors (mix purple/blue/pink)
+  for(let n of nebulas){
+    n.hue = rand(250,320);
+    n.sat = rand(45,75);
+    n.light = rand(40,65);
+    n.alpha = rand(0.06,0.2);
+  }
+  initEntities(DEFAULT_ENTITIES);
+}
+initAll();
+
+/* ---------- animate ---------- */
+window.requestAnimationFrame(step);
+
+/* ---------- Performance/mobile tweaks ---------- */
+/* Throttle pointermove default actions to avoid jank */
+document.addEventListener('touchmove', (e)=> e.preventDefault(), {passive:false});
+
+/* ---------- end of file ---------- */
 </script>
 </body>
 </html>
